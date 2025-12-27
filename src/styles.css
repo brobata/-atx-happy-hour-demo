@@ -243,14 +243,28 @@ body {
 
 .venue-emoji {
   font-size: 2.5rem;
-  width: 60px;
-  height: 60px;
+  width: 80px;
+  height: 80px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--bg-secondary);
   border-radius: 12px;
   flex-shrink: 0;
+}
+
+.venue-photo {
+  width: 80px;
+  height: 80px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.venue-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .venue-content {
@@ -272,10 +286,26 @@ body {
   color: var(--text-primary);
 }
 
+.venue-name a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.venue-name a:hover {
+  color: var(--accent);
+}
+
 .venue-rating {
   font-size: 0.85rem;
   color: var(--accent);
   flex-shrink: 0;
+}
+
+.ratings-count {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  margin-left: 0.25rem;
 }
 
 .venue-deal {
@@ -294,10 +324,29 @@ body {
   margin-bottom: 0.5rem;
 }
 
+.venue-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .venue-days {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
+}
+
+.maps-link {
+  font-size: 0.8rem;
+  color: var(--accent);
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.maps-link:hover {
+  opacity: 0.8;
 }
 
 .day-tag {

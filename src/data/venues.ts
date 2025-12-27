@@ -12,11 +12,28 @@ export interface Venue {
   startTime: string;
   endTime: string;
   rating: number;
+  ratingsCount?: number;
   image: string;
+  photoUrl?: string | null;
+  lat?: number;
+  lng?: number;
+  placeId?: string;
+  googleMapsUrl?: string;
 }
 
-// Sample Austin happy hour data
-export const venues: Venue[] = [
+// Try to import generated venues from Google Places API
+// Uses Vite's glob import to handle missing file gracefully
+const generatedModules = import.meta.glob('./venues-generated.json', { eager: true }) as Record<string, { default: Venue[] }>;
+const generatedVenues: Venue[] | null = generatedModules['./venues-generated.json']?.default || null;
+
+if (generatedVenues) {
+  console.log(`📍 Loaded ${generatedVenues.length} venues from Google Places`);
+} else {
+  console.log('📦 Using static venue data (no Google Places data available)');
+}
+
+// Static fallback data
+const staticVenues: Venue[] = [
   {
     id: "1",
     name: "The Brewtorium",
@@ -419,7 +436,13 @@ export const venues: Venue[] = [
   }
 ];
 
+// Use generated venues if available, otherwise use static data
+export const venues: Venue[] = generatedVenues || staticVenues;
+
 // Get unique values for filters
 export const neighborhoods = [...new Set(venues.map(v => v.neighborhood))].sort();
 export const cuisines = [...new Set(venues.map(v => v.cuisine))].sort();
 export const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+// Helper to check if we have Google data
+export const hasGoogleData = generatedVenues !== null;
