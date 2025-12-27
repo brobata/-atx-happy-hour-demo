@@ -4,6 +4,7 @@ import type { Venue } from '../data/venues';
 interface VenueCardProps {
   venue: Venue;
   searchQuery?: string;
+  isHappeningNow?: boolean;
 }
 
 // Highlight matching text
@@ -18,12 +19,18 @@ function highlightMatch(text: string, query: string): React.ReactNode {
   );
 }
 
-export function VenueCard({ venue, searchQuery = '' }: VenueCardProps) {
+export function VenueCard({ venue, searchQuery = '', isHappeningNow = false }: VenueCardProps) {
   const [imageError, setImageError] = useState(false);
   const hasPhoto = venue.photoUrl && !imageError;
 
   return (
-    <div className="venue-card">
+    <div className={`venue-card ${isHappeningNow ? 'happening-now' : ''}`}>
+      {isHappeningNow && (
+        <div className="live-badge">
+          <span className="pulse-dot"></span>
+          LIVE
+        </div>
+      )}
       {hasPhoto ? (
         <div className="venue-photo">
           <img
@@ -59,6 +66,14 @@ export function VenueCard({ venue, searchQuery = '' }: VenueCardProps) {
           <span className="venue-neighborhood">📍 {highlightMatch(venue.neighborhood, searchQuery)}</span>
           <span className="venue-time">🕐 {venue.startTime} - {venue.endTime}</span>
           <span className="venue-price">{'$'.repeat(venue.priceLevel)}</span>
+        </div>
+        <div className="venue-tags">
+          {venue.drinks.slice(0, 3).map(drink => (
+            <span key={drink} className="tag drink-tag">🍸 {drink}</span>
+          ))}
+          {venue.food.slice(0, 2).map(food => (
+            <span key={food} className="tag food-tag">🍴 {food}</span>
+          ))}
         </div>
         <div className="venue-footer">
           <div className="venue-days">

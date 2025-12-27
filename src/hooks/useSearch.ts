@@ -7,6 +7,8 @@ export interface Filters {
   cuisine: string | null;
   day: string | null;
   maxPrice: number | null;
+  timeFilter: 'all' | 'now' | 'soon' | 'today';
+  dealType: 'all' | 'drinks' | 'food';
 }
 
 interface SearchResult {
@@ -27,6 +29,77 @@ const schema = {
   days: 'string[]',
   priceLevel: 'number',
 } as const;
+
+// Parse time string like "3:00 PM" to minutes since midnight
+function parseTimeToMinutes(timeStr: string): number {
+  const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!match) return 0;
+
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const isPM = match[3].toUpperCase() === 'PM';
+
+  if (isPM && hours !== 12) hours += 12;
+  if (!isPM && hours === 12) hours = 0;
+
+  return hours * 60 + minutes;
+}
+
+// Get current time in minutes since midnight
+function getCurrentTimeMinutes(): number {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+}
+
+// Get current day name
+function getCurrentDay(): string {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return days[new Date().getDay()];
+}
+
+// Check if venue is currently in happy hour
+function isHappeningNow(venue: Venue): boolean {
+  const today = getCurrentDay();
+  if (!venue.days.includes(today)) return false;
+
+  const now = getCurrentTimeMinutes();
+  const start = parseTimeToMinutes(venue.startTime);
+  const end = parseTimeToMinutes(venue.endTime);
+
+  return now >= start && now <= end;
+}
+
+// Check if venue happy hour starts within next 2 hours
+function isStartingSoon(venue: Venue): boolean {
+  const today = getCurrentDay();
+  if (!venue.days.includes(today)) return false;
+
+  const now = getCurrentTimeMinutes();
+  const start = parseTimeToMinutes(venue.startTime);
+
+  // Starting within next 2 hours and not started yet
+  return start > now && start <= now + 120;
+}
+
+// Check if venue has happy hour today
+function isHappeningToday(venue: Venue): boolean {
+  const today = getCurrentDay();
+  return venue.days.includes(today);
+}
+
+// Check if deal text mentions drinks
+function hasDrinkSpecials(venue: Venue): boolean {
+  const drinkKeywords = ['beer', 'wine', 'cocktail', 'margarita', 'sake', 'whiskey', 'wells', 'pint', 'draft', 'shot', 'mezcal', 'tequila'];
+  const text = venue.dealText.toLowerCase();
+  return drinkKeywords.some(kw => text.includes(kw)) || venue.drinks.length > 0;
+}
+
+// Check if deal text mentions food
+function hasFoodSpecials(venue: Venue): boolean {
+  const foodKeywords = ['taco', 'app', 'food', 'pizza', 'wing', 'nacho', 'oyster', 'burger', 'fries', 'snack', 'bao', 'sausage', 'pretzel'];
+  const text = venue.dealText.toLowerCase();
+  return foodKeywords.some(kw => text.includes(kw)) || venue.food.length > 0;
+}
 
 export function useSearch(query: string, filters: Filters): SearchResult & { isLoading: boolean } {
   const [results, setResults] = useState<Venue[]>(venues);
@@ -67,8 +140,9 @@ export function useSearch(query: string, filters: Filters): SearchResult & { isL
         return;
       }
 
-      // If no query and no filters, show all
-      const hasFilters = filters.neighborhood || filters.cuisine || filters.day || filters.maxPrice;
+      // Check if any filters are active
+      const hasFilters = filters.neighborhood || filters.cuisine || filters.day || filters.maxPrice ||
+                         filters.timeFilter !== 'all' || filters.dealType !== 'all';
 
       if (!query.trim() && !hasFilters) {
         setResults(venues);
@@ -89,23 +163,64 @@ export function useSearch(query: string, filters: Filters): SearchResult & { isL
           where.priceLevel = { lte: filters.maxPrice };
         }
 
-        const searchResults = await search(dbRef.current, {
-          term: query.trim(),
-          properties: ['name', 'dealText', 'neighborhood', 'cuisine', 'drinks', 'food'],
-          limit: 50,
-          where: Object.keys(where).length > 0 ? where : undefined,
-        });
+        let matchedVenues: Venue[];
 
-        // Map results back to full venue objects
-        let matchedVenues = searchResults.hits.map(hit => {
-          const id = hit.document.id || hit.id;
-          return venues.find(v => v.id === id) || hit.document as unknown as Venue;
-        });
+        if (query.trim()) {
+          const searchResults = await search(dbRef.current, {
+            term: query.trim(),
+            properties: ['name', 'dealText', 'neighborhood', 'cuisine', 'drinks', 'food'],
+            limit: 100,
+            where: Object.keys(where).length > 0 ? where : undefined,
+          });
 
-        // Apply day filter (post-search since it's an array)
+          // Map results back to full venue objects
+          matchedVenues = searchResults.hits.map(hit => {
+            const id = hit.document.id || hit.id;
+            return venues.find(v => v.id === id) || hit.document as unknown as Venue;
+          });
+        } else {
+          // No query, start with all venues and apply filters
+          matchedVenues = [...venues];
+
+          if (filters.neighborhood) {
+            matchedVenues = matchedVenues.filter(v => v.neighborhood === filters.neighborhood);
+          }
+          if (filters.cuisine) {
+            matchedVenues = matchedVenues.filter(v => v.cuisine === filters.cuisine);
+          }
+          if (filters.maxPrice) {
+            matchedVenues = matchedVenues.filter(v => v.priceLevel <= filters.maxPrice!);
+          }
+        }
+
+        // Apply day filter
         if (filters.day) {
           matchedVenues = matchedVenues.filter(v => v.days.includes(filters.day!));
         }
+
+        // Apply time filter
+        if (filters.timeFilter === 'now') {
+          matchedVenues = matchedVenues.filter(isHappeningNow);
+        } else if (filters.timeFilter === 'soon') {
+          matchedVenues = matchedVenues.filter(isStartingSoon);
+        } else if (filters.timeFilter === 'today') {
+          matchedVenues = matchedVenues.filter(isHappeningToday);
+        }
+
+        // Apply deal type filter
+        if (filters.dealType === 'drinks') {
+          matchedVenues = matchedVenues.filter(hasDrinkSpecials);
+        } else if (filters.dealType === 'food') {
+          matchedVenues = matchedVenues.filter(hasFoodSpecials);
+        }
+
+        // Sort: happening now first, then by rating
+        matchedVenues.sort((a, b) => {
+          const aNow = isHappeningNow(a) ? 1 : 0;
+          const bNow = isHappeningNow(b) ? 1 : 0;
+          if (aNow !== bNow) return bNow - aNow;
+          return b.rating - a.rating;
+        });
 
         setResults(matchedVenues);
         setSearchTimeMs(performance.now() - startSearch);
@@ -134,6 +249,18 @@ export function useSearch(query: string, filters: Filters): SearchResult & { isL
         }
         if (filters.maxPrice) {
           filtered = filtered.filter(v => v.priceLevel <= filters.maxPrice!);
+        }
+        if (filters.timeFilter === 'now') {
+          filtered = filtered.filter(isHappeningNow);
+        } else if (filters.timeFilter === 'soon') {
+          filtered = filtered.filter(isStartingSoon);
+        } else if (filters.timeFilter === 'today') {
+          filtered = filtered.filter(isHappeningToday);
+        }
+        if (filters.dealType === 'drinks') {
+          filtered = filtered.filter(hasDrinkSpecials);
+        } else if (filters.dealType === 'food') {
+          filtered = filtered.filter(hasFoodSpecials);
         }
 
         setResults(filtered);
@@ -166,3 +293,6 @@ export function useDebounce<T>(value: T, delay: number): T {
 
   return debouncedValue;
 }
+
+// Export helper functions for use in components
+export { isHappeningNow, isStartingSoon, getCurrentDay };
